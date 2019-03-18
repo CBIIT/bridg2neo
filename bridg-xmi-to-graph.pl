@@ -159,11 +159,11 @@ my @external_models = grep {
 
 my @maps = grep { $_->tag =~ /^thecustomprofile:Map/ } $t->root->descendants;
 
-my (@x_nodes, @x_relns);
+my (%x_nodes, %x_relns);
 
 for my $m (@external_models) {
   my ($name) = $m->att('name') =~ /^Map.(.*)$/;
-  push @x_nodes, {id => $m->att('name'), name => $name, type => $m->att('xmi:type')};
+  $x_nodes{$m->att('name')} //= {id => $m->att('name'), name => $name, type => $m->att('xmi:type')};
 }
 
 for my $r (@maps) {
@@ -183,19 +183,19 @@ for my $r (@maps) {
   }
   my $oid = md5_hex(encode_utf8($content_key."=".$atts->{$content_key}));
   my ($type) = $base_type =~ /^base_(.*)/;
-  push @x_nodes, { type => "X$type",
+  $x_nodes{$oid} //= { type => "X$type",
 		   name => $atts->{$content_key},
 		   id => $oid };
   unless ($entities{$bid}) {
     warn "BRIDG $type entity $bid not captured earlier for mapping $mid";
   }
-  push @x_relns, { type => 'from_model', src => $oid, dst => $mid },
-    { type => 'maps_to', src => $bid, dst => $oid,
-      src_card => [0,-1], dst_card => [0, -1] };
+  $x_relns{$oid.$mid} //= { type => 'from_model', src => $oid, dst => $mid };
+  $x_relns{$bid.$oid} //= { type => 'maps_to', src => $bid, dst => $oid,
+			    src_card => [0,-1], dst_card => [0, -1] };
 }
 
 # Views
-my (@v_nodes,@v_relns);
+my (%v_nodes,%v_relns);
 
 my @diagrams = $t->root->descendants('diagram');
 for my $d (@diagrams) {
@@ -213,10 +213,10 @@ for my $d (@diagrams) {
     }
   }
   if (@classes) {
-    push @v_nodes, { id => $vid, type => 'View',
+    $v_nodes{$vid} //= { id => $vid, type => 'View',
 		     name => $view_name };
     for my $c (@classes) {
-      push @v_relns, { type => 'contains_class', dst => $c,
+      $v_relns{$vid.$c} //= { type => 'contains_class', dst => $c,
 		       src => $vid};
     }
   }
@@ -235,13 +235,13 @@ $DB::single=1;
 # create node csvs; node labels - uml types
 my (@Nodes,@Relationships);
 
-push @Nodes, values %nodes, @x_nodes, @v_nodes;
+push @Nodes, values %nodes, values %x_nodes, values %v_nodes;
 
 for my $typ (keys %relns) {
   push @Relationships, @{$relns{$typ}{instances}};
 }
 
-push @Relationships, @x_relns, @v_relns;
+push @Relationships, values %x_relns, values %v_relns;
 
 my $j = JSON->new()->pretty(1);
 
