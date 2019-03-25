@@ -4,6 +4,7 @@ use XML::Twig;
 use HTML::Entities;
 use Encode qw/encode_utf8/;
 use Digest::MD5 qw/md5_hex/;
+use Try::Tiny;
 use JSON;
 use strict;
 
@@ -149,8 +150,6 @@ for ( grep { $_->{type} =~ /Generalization/} values %nodes ) {
 		    $entities{$_->{general}}->att('name'));
 }
 
-
-
 # External models and mappings
 
 my @external_models = grep {
@@ -201,6 +200,7 @@ my @diagrams = $t->root->descendants('diagram');
 for my $d (@diagrams) {
   my $vid = $d->att('xmi:id');
   my $view_name = $d->first_child('properties')->att('name');
+  my $view_doc = $d->first_child('properties')->att('documentation');
   my @classes;
   for my $e ($d->first_child('elements')->children) {
     my $ent = $entities{$e->att('subject')};
@@ -214,12 +214,67 @@ for my $d (@diagrams) {
   }
   if (@classes) {
     $v_nodes{$vid} //= { id => $vid, type => 'View',
-		     name => $view_name };
+			 name => $view_name };
+    $v_nodes{$vid}{doc} = $view_doc if $view_doc;
     for my $c (@classes) {
       $v_relns{$vid.$c} //= { type => 'contains_class', dst => $c,
 		       src => $vid};
     }
   }
+}
+
+# Comments
+my (%cmt_nodes, %cmt_relns);
+
+my @comments = $bridg->descendants('[@xmi:type="uml:Comment"]');
+for my $c (@comments) {
+  my $cid = $c->att('xmi:id');
+  unless ($c->att('body')) {
+    warn "Comment object '$cid' has no comment body. Skipping...";
+    next;
+  }
+  my $c_body = decode_entities($c->att('body')); # comment content
+  my $c_anelt;
+  if (my $e = $c->first_child('annotatedElement')) {
+    unless ($c_anelt = $e->att('xmi:idref')) {
+      warn "Comment object '$cid' annotatedElement has no idref. Skipping...";
+      next;
+    }
+    unless (defined $entities{$c_anelt}) {
+      warn "annotatedElement '$c_anelt' for comment object '$cid' is unknown. Skipping...";
+      next;
+    }
+  }
+  else {
+    warn "Comment object '$cid' has no <annotatedElement>. Skipping...";
+    next;
+  }
+
+
+  $cmt_nodes{$cid} //= { id => $cid, type => 'Comment',
+			 body => $c_body };
+  $cmt_relns{$cid.$c_anelt} //= { type => 'comments_on', dst => $c_anelt,
+				    src => $cid };
+}
+
+# Class documentation
+
+my (%doc_nodes, %doc_relns);
+
+my @docs = grep { $_->parent->att('xmi:type') eq 'uml:Class' } $t->root->descendants('properties[@documentation]');
+
+for my $d (@docs) {
+  my $idref = $d->parent->att('xmi:idref');
+  my $did = "D_".$idref;
+  my $d_body = decode_entities($d->att('documentation'));
+  unless ( $entities{$idref} ) {
+    warn "Doc text refers to unknown class with id '$idref'. Skipping...";
+    next;
+  }
+  $doc_nodes{$did} //= { id => $did, type => 'Documentation',
+			 body => $d_body };
+  $doc_relns{$did.$idref} //= { type => 'documents', src => $did,
+				dst => $idref };
 }
 
 $DB::single=1;
@@ -235,13 +290,15 @@ $DB::single=1;
 # create node csvs; node labels - uml types
 my (@Nodes,@Relationships);
 
-push @Nodes, values %nodes, values %x_nodes, values %v_nodes;
+push @Nodes, values %nodes, values %x_nodes, values %v_nodes,
+  values %cmt_nodes, values %doc_nodes;
 
 for my $typ (keys %relns) {
   push @Relationships, @{$relns{$typ}{instances}};
 }
 
-push @Relationships, values %x_relns, values %v_relns;
+push @Relationships, values %x_relns, values %v_relns,
+  values %cmt_relns, values %doc_relns;
 
 my $j = JSON->new()->pretty(1);
 
