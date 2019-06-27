@@ -8,7 +8,8 @@ use Try::Tiny;
 use JSON;
 use strict;
 
-my $fx = "bridg5.2.1.dim.xmi";
+# my $fx = "bridg5.2.1.dim.xmi";
+my $fx = shift @ARGV; # first arg is .xmi file
 
 my %elts;
 my $t = XML::Twig->new(
