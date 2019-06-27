@@ -24,4 +24,15 @@ an output JSON file.
 The JSON file can then be parsed and converted into Neo4j Cypher
 language CREATE statments by [graph-to-cypher.pl](./graph-to-cypher.pl).
 
+# Installation
+
+The perl scripts can be installed (and the relevant dependencies also) as
+follows:
+
+`$ perl Build.PL
+ $ ./Build installdeps
+ $ ./Build install
+`
+ 
+  
 

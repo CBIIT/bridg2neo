@@ -1,0 +1,30 @@
+---
+abstract: 'Create Neo4j graph db from BRIDG XMI'
+author:
+  - 'Mark A. Jensen'
+build_requires: {}
+configure_requires:
+  Module::Build: '0'
+dynamic_config: 1
+generated_by: 'Module::Build version 0.422, CPAN::Meta::Converter version 2.150010'
+license: unknown
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: '1.4'
+name: BRIDG2Neo
+provides:
+  BRIDG2Neo:
+    file: lib/BRIDG2Neo.pm
+    version: '0.1'
+requires:
+  Digest::MD5: '0'
+  Encode: '0'
+  HTML::Entities: '0'
+  JSON: '2'
+  JSON::ize: '0.104'
+  Neo4j::Cypher::Abstract: '0.1002'
+  Try::Tiny: '0'
+  XML::Twig: '0'
+  utf8::all: '0'
+version: '0.1'
+x_serialization_backend: 'CPAN::Meta::YAML version 0.018'
