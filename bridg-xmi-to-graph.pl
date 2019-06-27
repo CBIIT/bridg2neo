@@ -34,10 +34,12 @@ for my $typ ($t->descendants('[@xmi:type="uml:PrimitiveType"]')) {
 # xmi:type "uml:Package"
 
 my @subdomains = $bridg->children('packagedElement');
+my $split_name = sub { join(" ", ($_[0] =~ /((?:^|[[:upper:]])(?:[[:upper:]]+(?:(?=[[:upper:]])|$)|[[:lower:]]+))/g)) };
+
 foreach my $subd (@subdomains) {
   my $subd_id = $subd->att('xmi:id');
   $entities{$subd_id} = $subd;
-  $nodes{$subd->att('name')} = {
+  $nodes{$subd_id} = {
     id => $subd_id,
     type => $subd->att('xmi:type'),
     name => $subd->att('name')
@@ -50,7 +52,9 @@ foreach my $subd (@subdomains) {
       warn "Class with id '$c_id' has no 'name' attribute. Skipping...";
       next;
     }
-    $nodes{$c->att('name')} = { id => $c_id, type => $c->att('xmi:type'), name => $c->att('name') };
+
+    $nodes{$c_id} = { id => $c_id, type => $c->att('xmi:type'), name => $c->att('name'),
+		     _split_name => $split_name->($c->att('name'))};
     push @{$relns{'contains_class'}{instances}}, { type => 'contains_class', src => $subd_id, dst => $c_id };
     # Find all the properties for the class
     for my $p ($c->children('[@xmi:type="uml:Property"]')) {
@@ -71,9 +75,10 @@ foreach my $subd (@subdomains) {
 	warn "Property defined in element:\n".$p->outer_xml." has no data type defined"
       }
       $entities{$p_id} = $p;
-      $nodes{$p->att('name')} = {
+      $nodes{$p_id} = {
 	id => $p_id, type => $p->att('xmi:type'),
 	name => $p->att('name'),
+	_split_name => $split_name->($p->att('name')),
 	$p_type ? (data_type => $p_type) : (),
 	$p->att('aggregation') ? (aggregation => $p->att('aggregation')) : () };
       push @{$relns{'has_property'}{instances}}, { type => 'has_property', src =>$c_id, dst => $p_id, src_card => [0,-1], dst_card => [0,-1] };
@@ -102,7 +107,7 @@ foreach my $subd (@subdomains) {
     $a_name =~ s/ /_/g;
     $entities{$a_id} = $a;
     # create a node that represents the Association entity
-    $nodes{$a_name} = { id => $a_id, type => $a->att('xmi:type'),
+    $nodes{$a_id} = { id => $a_id, type => $a->att('xmi:type'),
 			name => $a_name };
     # create relationships which are instances of the Association entity
     my ($end1, $end2) = $a->children('ownedEnd');
@@ -135,6 +140,8 @@ foreach my $subd (@subdomains) {
       type => $a_name,
       src => $src->first_child('type')->att('xmi:idref'),
       dst => $dst->first_child('type')->att('xmi:idref'),
+      src_role => $src->att('name'),
+      dst_role => $dst->att('name'),
       src_card => [ 0+$src->first_child('lowerValue')->att('value'),
 		    0+$src->first_child('upperValue')->att('value') ],
       dst_card => [ 0+$dst->first_child('lowerValue')->att('value'),
@@ -257,16 +264,19 @@ for my $c (@comments) {
 				    src => $cid };
 }
 
-# Class documentation
+# Class and Property documentation
 
 my (%doc_nodes, %doc_relns);
 
 my @docs = grep { $_->parent->att('xmi:type') eq 'uml:Class' } $t->root->descendants('properties[@documentation]');
 
+push @docs, grep { $_->parent->tag eq 'attribute' } $t->root->descendants('documentation');
+
 for my $d (@docs) {
   my $idref = $d->parent->att('xmi:idref');
   my $did = "D_".$idref;
-  my $d_body = decode_entities($d->att('documentation'));
+  my $d_body = decode_entities($d->att('documentation')) ||
+    decode_entities($d->att('value'));
   unless ( $entities{$idref} ) {
     warn "Doc text refers to unknown class with id '$idref'. Skipping...";
     next;
